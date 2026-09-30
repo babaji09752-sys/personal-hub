@@ -22,11 +22,30 @@ export function Gallery() {
   const [newCamera, setNewCamera] = useState('Unknown')
   const [newColors, setNewColors] = useState('#0f172a,#4f46e5,#38bdf8')
 
+  // Helper to ensure colors is always a clean array of strings
+  const safeColors = (colors) => {
+    if (Array.isArray(colors)) return colors
+    if (typeof colors === 'string') {
+      try {
+        const parsed = JSON.parse(colors)
+        if (Array.isArray(parsed)) return parsed
+      } catch {
+        return colors.split(',').map((c) => c.trim()).filter(Boolean)
+      }
+    }
+    return []
+  }
+
   useEffect(() => {
     const fetchGallery = async () => {
       setLoading(true)
       const data = await getPhotos()
-      setPhotos(data || mockData.gallery)
+      const rawList = Array.isArray(data) ? data : (mockData.gallery || [])
+      const normalized = rawList.map((p) => ({
+        ...p,
+        colors: safeColors(p.colors),
+      }))
+      setPhotos(normalized)
       setLoading(false)
     }
     fetchGallery()
@@ -190,7 +209,7 @@ export function Gallery() {
                   
                   {/* Swatches */}
                   <div className="flex items-center gap-2 mt-2">
-                    {photo.colors?.map((c, i) => (
+                    {(Array.isArray(photo.colors) ? photo.colors : safeColors(photo.colors)).map((c, i) => (
                       <span
                         key={i}
                         className="h-4 w-4 rounded-full border border-white/20 shadow-lg transition-transform hover:scale-150"
@@ -241,7 +260,7 @@ export function Gallery() {
                 <div className="space-y-2">
                   <p className="text-xs font-semibold text-slate-500 uppercase tracking-widest">Dominant Colors</p>
                   <div className="flex flex-wrap gap-3">
-                    {activePhoto.colors?.map((c, i) => (
+                    {(Array.isArray(activePhoto?.colors) ? activePhoto.colors : safeColors(activePhoto?.colors)).map((c, i) => (
                       <div key={i} className="flex flex-col items-center gap-1 cursor-pointer hover:scale-110 transition-transform" onClick={() => navigator.clipboard.writeText(c)}>
                         <div className="h-8 w-8 rounded-full border border-white/20 shadow-md" style={{ backgroundColor: c }} />
                         <span className="text-[10px] text-slate-400 font-mono uppercase">{c}</span>

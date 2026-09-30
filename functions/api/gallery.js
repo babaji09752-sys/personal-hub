@@ -12,7 +12,20 @@ export async function onRequestGet(context) {
     }
     
     const { results } = await stmt.all();
-    return new Response(JSON.stringify(results), { headers: { 'Content-Type': 'application/json' } });
+    const photos = (results || []).map((p) => {
+      let colors = [];
+      if (Array.isArray(p.colors)) {
+        colors = p.colors;
+      } else if (typeof p.colors === 'string') {
+        try {
+          colors = JSON.parse(p.colors);
+        } catch {
+          colors = p.colors.split(',').map((c) => c.trim()).filter(Boolean);
+        }
+      }
+      return { ...p, colors };
+    });
+    return new Response(JSON.stringify(photos), { headers: { 'Content-Type': 'application/json' } });
   } catch (error) {
     return new Response(JSON.stringify({ error: error.message }), { status: 500, headers: { 'Content-Type': 'application/json' } });
   }

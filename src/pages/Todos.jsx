@@ -30,11 +30,12 @@ export function Todos() {
     const fetchTasks = async () => {
       setLoading(true)
       const data = await getTodos()
-      if (data) {
-        setTodos(data)
-      } else {
-        setTodos(mockData.todos)
-      }
+      const raw = Array.isArray(data) ? data : (mockData.todos || [])
+      const normalized = raw.map((t) => ({
+        ...t,
+        subtasks: Array.isArray(t.subtasks) ? t.subtasks : [],
+      }))
+      setTodos(normalized)
       setLoading(false)
     }
     fetchTasks()
@@ -369,7 +370,7 @@ export function Todos() {
                 >
                   <div className="p-5 space-y-3">
                     <div className="space-y-2">
-                      {todo.subtasks?.map((st) => (
+                      {(Array.isArray(todo.subtasks) ? todo.subtasks : []).map((st) => (
                         <div
                           key={st.id}
                           onClick={(e) => handleToggleSubtask(todo.id, st.id, e)}

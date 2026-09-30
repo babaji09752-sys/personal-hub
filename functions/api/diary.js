@@ -11,7 +11,20 @@ export async function onRequestGet(context) {
     query += ` ORDER BY date DESC`;
     
     const { results } = await env.DB.prepare(query).all();
-    return new Response(JSON.stringify(results), { headers: { 'Content-Type': 'application/json' } });
+    const entries = (results || []).map((e) => {
+      let tags = [];
+      if (Array.isArray(e.tags)) {
+        tags = e.tags;
+      } else if (typeof e.tags === 'string') {
+        try {
+          tags = JSON.parse(e.tags);
+        } catch {
+          tags = e.tags.split(',').map((t) => t.trim()).filter(Boolean);
+        }
+      }
+      return { ...e, tags };
+    });
+    return new Response(JSON.stringify(entries), { headers: { 'Content-Type': 'application/json' } });
   } catch (error) {
     return new Response(JSON.stringify({ error: error.message }), { status: 500, headers: { 'Content-Type': 'application/json' } });
   }

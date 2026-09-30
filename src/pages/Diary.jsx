@@ -28,11 +28,30 @@ export function Diary() {
   const [tagInput, setTagInput] = useState('')
   const [tags, setTags] = useState([])
 
+  // Helper to ensure tags is always a clean array of strings
+  const safeTags = (tags) => {
+    if (Array.isArray(tags)) return tags
+    if (typeof tags === 'string') {
+      try {
+        const parsed = JSON.parse(tags)
+        if (Array.isArray(parsed)) return parsed
+      } catch {
+        return tags.split(',').map((t) => t.trim()).filter(Boolean)
+      }
+    }
+    return []
+  }
+
   useEffect(() => {
     const fetchDiary = async () => {
       setLoading(true)
       const data = await getDiaryEntries()
-      setEntries(data || mockData.diary)
+      const rawList = Array.isArray(data) ? data : (mockData.diary || [])
+      const normalized = rawList.map((e) => ({
+        ...e,
+        tags: safeTags(e.tags),
+      }))
+      setEntries(normalized)
       setLoading(false)
     }
     fetchDiary()
@@ -173,12 +192,16 @@ export function Diary() {
                     <span className="px-2 py-0.5 rounded-full bg-white/5 text-[10px]">{entry.weather.split(' ')[0]}</span>
                   </div>
                   <div className="flex flex-wrap gap-1.5">
-                    {entry.tags?.slice(0,3).map(tag => (
+                    {(Array.isArray(entry.tags) ? entry.tags : safeTags(entry.tags)).slice(0, 3).map((tag) => (
                       <span key={tag} className="px-2 py-1 rounded-lg bg-indigo-500/20 text-indigo-300 text-[10px] font-medium tracking-wide">
                         #{tag}
                       </span>
                     ))}
-                    {entry.tags?.length > 3 && <span className="px-2 py-1 rounded-lg bg-white/5 text-slate-400 text-[10px]">+{entry.tags.length - 3}</span>}
+                    {(Array.isArray(entry.tags) ? entry.tags : safeTags(entry.tags)).length > 3 && (
+                      <span className="px-2 py-1 rounded-lg bg-white/5 text-slate-400 text-[10px]">
+                        +{(Array.isArray(entry.tags) ? entry.tags : safeTags(entry.tags)).length - 3}
+                      </span>
+                    )}
                   </div>
                 </div>
               </div>
@@ -280,7 +303,7 @@ export function Diary() {
             </div>
 
             <div className="flex flex-wrap gap-2 pt-4">
-              {viewEntry.tags?.map(tag => (
+              {(Array.isArray(viewEntry?.tags) ? viewEntry.tags : safeTags(viewEntry?.tags)).map((tag) => (
                 <span key={tag} className="px-3 py-1.5 rounded-xl bg-indigo-500/20 text-indigo-300 text-xs font-semibold">#{tag}</span>
               ))}
             </div>
