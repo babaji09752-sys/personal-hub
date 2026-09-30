@@ -1,5 +1,5 @@
 import { createContext, useContext, useState, useEffect } from 'react'
-import { supabase, isSupabaseConfigured, signInWithOtp, verifyOtp, signOut, getSession } from '../services/supabase'
+import { supabase, isSupabaseConfigured, signInWithOtp, verifyOtp, signOut, getSession, signInWithGoogle } from '../services/supabase'
 
 const AuthContext = createContext(null)
 
@@ -80,6 +80,20 @@ export function AuthProvider({ children }) {
     localStorage.setItem('auth_token', 'demo-guest-jwt-token')
   }
 
+  // Google OAuth Login
+  const loginWithGoogle = async () => {
+    const res = await signInWithGoogle()
+    if (res?.data?.session) {
+      setSession(res.data.session)
+      setUser(res.data.user)
+      localStorage.setItem('auth_token', res.data.session.access_token)
+      if (!isSupabaseConfigured) {
+        localStorage.setItem('app_guest_user', JSON.stringify(res.data.user))
+      }
+    }
+    return res
+  }
+
   // Logout
   const logout = async () => {
     await signOut()
@@ -97,6 +111,7 @@ export function AuthProvider({ children }) {
     sendOtp,
     verifyCode,
     loginAsGuest,
+    loginWithGoogle,
     logout,
   }
 

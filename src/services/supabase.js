@@ -16,6 +16,43 @@ export const supabase = isSupabaseConfigured
   : null
 
 /**
+ * Sign in using Google OAuth
+ */
+export async function signInWithGoogle() {
+  if (!isSupabaseConfigured) {
+    console.warn('Supabase credentials missing. Simulating Google OAuth login.')
+    const demoGoogleUser = {
+      id: 'google-user-' + Math.random().toString(36).substring(7),
+      email: 'namanpreet.dev@gmail.com',
+      user_metadata: {
+        name: 'NamanPreet Singh',
+        full_name: 'NamanPreet Singh',
+        avatar_url: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=150&q=80',
+        provider: 'google',
+      },
+      provider: 'google',
+    }
+    return {
+      data: {
+        session: {
+          access_token: 'mock-google-oauth-token-999',
+          user: demoGoogleUser,
+        },
+        user: demoGoogleUser,
+      },
+      error: null,
+    }
+  }
+
+  return await supabase.auth.signInWithOAuth({
+    provider: 'google',
+    options: {
+      redirectTo: window.location.origin,
+    },
+  })
+}
+
+/**
  * Sign in using OTP (One-Time Password / Magic Link)
  * @param {string} email 
  */

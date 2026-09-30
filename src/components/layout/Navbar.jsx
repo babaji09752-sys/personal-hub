@@ -175,9 +175,17 @@ export function Navbar() {
 
         {/* User Pill */}
         <div className="flex items-center gap-2 rounded-xl border border-white/10 bg-slate-900/70 p-1 sm:px-2.5 sm:py-1">
-          <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-gradient-to-tr from-indigo-600 to-purple-500 text-white font-bold text-xs shadow-sm">
-            {user?.user_metadata?.name ? user.user_metadata.name.charAt(0).toUpperCase() : 'U'}
-          </div>
+          {user?.user_metadata?.avatar_url ? (
+            <img 
+              src={user.user_metadata.avatar_url} 
+              alt={user.user_metadata.name || 'User'} 
+              className="h-7 w-7 rounded-lg object-cover ring-1 ring-white/20"
+            />
+          ) : (
+            <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-gradient-to-tr from-indigo-600 to-purple-500 text-white font-bold text-xs shadow-sm">
+              {user?.user_metadata?.name ? user.user_metadata.name.charAt(0).toUpperCase() : 'U'}
+            </div>
+          )}
           <div className="hidden xl:flex flex-col text-left">
             <span className="text-xs font-semibold text-slate-200 truncate max-w-[120px]">
               {user?.user_metadata?.name || user?.email?.split('@')[0] || 'User'}
