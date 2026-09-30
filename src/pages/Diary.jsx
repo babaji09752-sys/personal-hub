@@ -1,111 +1,66 @@
 import { useState, useEffect } from 'react'
-import { 
-  Plus, 
-  Search, 
-  BookOpen, 
-  Trash2, 
-  Calendar as CalendarIcon, 
-  Smile, 
-  CloudSun, 
-  Pin, 
-  Clock, 
-  FileText,
-  Tag,
-  Bold,
-  Italic,
-  List,
-  Code,
-  Flame
-} from 'lucide-react'
+import { Plus, Search, BookOpen, Trash2, Calendar as CalendarIcon, Pin, Clock, X } from 'lucide-react'
 import { Button } from '../components/ui/Button'
-import { Card, CardHeader, CardTitle, CardContent, CardFooter } from '../components/ui/Card'
-import { Badge } from '../components/ui/Badge'
-import { Input } from '../components/ui/Input'
 import { Modal } from '../components/ui/Modal'
+import { Input } from '../components/ui/Input'
 import { useToast } from '../context/ToastContext'
 import { sound } from '../services/sound'
+import { getDiaryEntries, createDiaryEntry, deleteDiaryEntry, updateDiaryEntry, mockData } from '../services/api'
 
-const MOODS = [
-  { label: '🚀 Productive', color: 'text-indigo-400 bg-indigo-500/10' },
-  { label: '💡 Inspired', color: 'text-amber-400 bg-amber-500/10' },
-  { label: '☕ Relaxed', color: 'text-emerald-400 bg-emerald-500/10' },
-  { label: '🧘 Mindful', color: 'text-teal-400 bg-teal-500/10' },
-  { label: '🎯 Focused', color: 'text-purple-400 bg-purple-500/10' },
-  { label: '🌧️ Melancholic', color: 'text-slate-400 bg-slate-800' },
-]
-
+const MOODS = ['🚀 Productive', '💡 Inspired', '☕ Relaxed', '🧘 Mindful', '🎯 Focused', '🌧️ Melancholic']
 const WEATHERS = ['☀️ Clear Sky', '⛅ Partly Cloudy', '🌧️ Gentle Rain', '⚡ Stormy', '🌙 Starry Night']
-
-const INITIAL_ENTRIES = [
-  {
-    id: 1,
-    title: 'Architecting the Cloudflare Edge Personal Hub',
-    date: '2026-09-30',
-    mood: '🚀 Productive',
-    weather: '🌙 Starry Night',
-    content: `Today I finalized the decoupled fullstack setup.\n\nThe edge worker handles all routing logic with ultra-low latency, and Supabase manages user identities with zero friction.\n\nDesigning with glassmorphism and tactile audio feedback feels so satisfying. Key takeaway: Never sacrifice responsiveness for aesthetic flair—balance both seamlessly.`,
-    tags: ['engineering', 'design', 'milestone'],
-    isPinned: true,
-  },
-  {
-    id: 2,
-    title: 'Reflections on Clean UI & Focused Workflows',
-    date: '2026-09-28',
-    mood: '💡 Inspired',
-    weather: '☀️ Clear Sky',
-    content: `Simplicity is about eliminating the non-essential so the essential may speak.\n\nBuilding out the command palette with ⌘K feels like having superpowers. Navigating between chat, gallery, and notes without taking hands off the keyboard elevates productivity exponentially.`,
-    tags: ['philosophy', 'productivity'],
-    isPinned: false,
-  },
-]
 
 export function Diary() {
   const toast = useToast()
-  const [entries, setEntries] = useState(() => {
-    const saved = localStorage.getItem('diary_entries')
-    if (saved) {
-      try {
-        return JSON.parse(saved)
-      } catch (e) {}
-    }
-    return INITIAL_ENTRIES
-  })
+  const [entries, setEntries] = useState([])
+  const [loading, setLoading] = useState(true)
 
   const [searchQuery, setSearchQuery] = useState('')
-  const [selectedTag, setSelectedTag] = useState('All')
   const [isModalOpen, setIsModalOpen] = useState(false)
+  const [viewEntry, setViewEntry] = useState(null)
 
   // Form states
   const [title, setTitle] = useState('')
-  const [mood, setMood] = useState(MOODS[0].label)
+  const [mood, setMood] = useState(MOODS[0])
   const [weather, setWeather] = useState(WEATHERS[0])
   const [date, setDate] = useState(new Date().toISOString().split('T')[0])
   const [content, setContent] = useState('')
   const [tagInput, setTagInput] = useState('')
+  const [tags, setTags] = useState([])
 
   useEffect(() => {
-    localStorage.setItem('diary_entries', JSON.stringify(entries))
-  }, [entries])
+    const fetchDiary = async () => {
+      setLoading(true)
+      const data = await getDiaryEntries()
+      setEntries(data || mockData.diary)
+      setLoading(false)
+    }
+    fetchDiary()
+  }, [])
 
-  const allTags = ['All', ...new Set(entries.flatMap((e) => e.tags || []))]
+  const handleAddTag = (e) => {
+    if (e.key === 'Enter') {
+      e.preventDefault()
+      const newTag = tagInput.trim().toLowerCase()
+      if (newTag && !tags.includes(newTag)) {
+        setTags([...tags, newTag])
+        setTagInput('')
+      }
+    }
+  }
 
-  const handleCreateEntry = (e) => {
+  const removeTag = (tagToRemove) => {
+    setTags(tags.filter(t => t !== tagToRemove))
+  }
+
+  const handleCreateEntry = async (e) => {
     e.preventDefault()
     if (!title.trim() || !content.trim()) return
 
     sound.success()
-    const tags = tagInput
-      .split(',')
-      .map((t) => t.trim().toLowerCase())
-      .filter(Boolean)
-
     const newEntry = {
       id: Date.now(),
-      title,
-      mood,
-      weather,
-      date,
-      content,
+      title, mood, weather, date, content,
       tags: tags.length > 0 ? tags : ['journal'],
       isPinned: false,
     }
@@ -113,366 +68,225 @@ export function Diary() {
     setEntries((prev) => [newEntry, ...prev])
     setTitle('')
     setContent('')
+    setTags([])
     setTagInput('')
     setIsModalOpen(false)
     toast.success('Journal Saved', 'New reflection recorded in your private vault.')
+    
+    await createDiaryEntry(newEntry)
   }
 
-  const handleTogglePin = (id, e) => {
+  const handleTogglePin = async (id, e) => {
     e?.stopPropagation()
     sound.toggle()
+    const entry = entries.find(e => e.id === id)
+    if (!entry) return
+    const nextPinned = !entry.isPinned
+
     setEntries((prev) =>
-      prev.map((entry) =>
-        entry.id === id ? { ...entry, isPinned: !entry.isPinned } : entry
-      )
+      prev.map((e) => (e.id === id ? { ...e, isPinned: nextPinned } : e))
     )
-    toast.info('Status Updated', 'Entry pin state toggled.')
+    await updateDiaryEntry(id, { isPinned: nextPinned })
   }
 
-  const handleDelete = (id) => {
+  const handleDelete = async (id, e) => {
+    e?.stopPropagation()
     sound.delete()
     setEntries((prev) => prev.filter((entry) => entry.id !== id))
+    if (viewEntry?.id === id) setViewEntry(null)
     toast.info('Entry Removed', 'Diary note deleted.')
+    await deleteDiaryEntry(id)
   }
-
-  const insertMarkdown = (syntax) => {
-    sound.click()
-    setContent((prev) => prev + syntax)
-  }
-
-  // Calculate stats
-  const totalWords = entries.reduce(
-    (acc, e) => acc + (e.content ? e.content.split(/\s+/).filter(Boolean).length : 0),
-    0
-  )
 
   const filteredEntries = entries
     .filter((entry) => {
       const query = searchQuery.toLowerCase()
-      const matchesSearch =
-        entry.title.toLowerCase().includes(query) ||
-        entry.content.toLowerCase().includes(query) ||
-        entry.tags?.some((t) => t.toLowerCase().includes(query))
-
-      const matchesTag = selectedTag === 'All' || entry.tags?.includes(selectedTag)
-      return matchesSearch && matchesTag
+      return entry.title.toLowerCase().includes(query) || entry.content.toLowerCase().includes(query)
     })
     .sort((a, b) => (b.isPinned ? 1 : 0) - (a.isPinned ? 1 : 0))
 
   return (
-    <div className="space-y-6">
-      {/* Overview Stats Bar */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        <div className="glass-card flex items-center gap-3.5 rounded-2xl p-4">
-          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-indigo-500/10 text-indigo-400 border border-indigo-500/20">
-            <BookOpen className="h-5 w-5" />
-          </div>
-          <div>
-            <div className="text-xl font-bold text-white">{entries.length}</div>
-            <div className="text-xs text-slate-400">Total Reflections</div>
-          </div>
+    <div className="space-y-8">
+      {/* Search & Action Bar */}
+      <div className="flex flex-col md:flex-row gap-4 items-center justify-between">
+        <div className="relative flex-1 w-full max-w-xl">
+          <Search className="absolute left-4 top-1/2 -translate-y-1/2 h-5 w-5 text-white/40" />
+          <input
+            type="text"
+            placeholder="Search thoughts, memories, tags..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="w-full rounded-2xl border border-white/10 bg-white/5 backdrop-blur-md pl-12 pr-4 py-3 text-sm text-slate-100 placeholder-white/40 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 transition-all shadow-lg hover:bg-white/10"
+          />
         </div>
-
-        <div className="glass-card flex items-center gap-3.5 rounded-2xl p-4">
-          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
-            <FileText className="h-5 w-5" />
-          </div>
-          <div>
-            <div className="text-xl font-bold text-white">{totalWords.toLocaleString()}</div>
-            <div className="text-xs text-slate-400">Words Recorded</div>
-          </div>
-        </div>
-
-        <div className="glass-card flex items-center gap-3.5 rounded-2xl p-4">
-          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-amber-500/10 text-amber-400 border border-amber-500/20">
-            <Flame className="h-5 w-5" />
-          </div>
-          <div>
-            <div className="text-xl font-bold text-white">4 Days</div>
-            <div className="text-xs text-slate-400">Journaling Streak</div>
-          </div>
-        </div>
-      </div>
-
-      {/* Toolbar & Filters */}
-      <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-4">
-        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 flex-1 max-w-2xl">
-          <div className="relative flex-1">
-            <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-500" />
-            <input
-              type="text"
-              placeholder="Search thoughts, memories, tags..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full rounded-2xl border border-white/10 bg-slate-900/80 pl-10 pr-4 py-2 text-xs text-slate-100 placeholder-slate-500 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 transition-all shadow-sm"
-            />
-          </div>
-
-          <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar py-1">
-            {allTags.map((tag) => (
-              <button
-                key={tag}
-                onClick={() => {
-                  sound.click()
-                  setSelectedTag(tag)
-                }}
-                className={`rounded-xl px-3 py-1.5 text-xs font-semibold whitespace-nowrap transition-all cursor-pointer ${
-                  selectedTag === tag
-                    ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/30'
-                    : 'bg-slate-900/80 text-slate-400 hover:bg-slate-800 hover:text-slate-200 border border-white/5'
-                }`}
-              >
-                {tag === 'All' ? 'All Tags' : `#${tag}`}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        <Button
-          onClick={() => {
-            sound.click()
-            setIsModalOpen(true)
-          }}
-          icon={Plus}
-          size="sm"
-          className="rounded-xl shadow-lg shadow-indigo-600/20"
-        >
-          New Diary Entry
+        <Button onClick={() => setIsModalOpen(true)} icon={Plus} className="rounded-xl shadow-lg bg-indigo-600 hover:bg-indigo-700 w-full md:w-auto py-3">
+          New Entry
         </Button>
       </div>
 
-      {/* Entries Grid */}
-      {filteredEntries.length === 0 ? (
-        <div className="rounded-3xl border border-dashed border-white/10 p-16 text-center text-slate-500 glass-card">
-          <BookOpen className="mx-auto h-12 w-12 text-slate-600 mb-3" />
-          <h3 className="text-base font-medium text-slate-300">No reflections found</h3>
-          <p className="text-xs text-slate-500 mt-1">Start writing down your ideas and reflections.</p>
+      {/* Grid Layout */}
+      {loading ? (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 auto-rows-[250px]">
+          {[1,2,3].map(i => <div key={i} className="bg-white/5 backdrop-blur-xl border border-white/10 rounded-3xl animate-pulse" />)}
+        </div>
+      ) : filteredEntries.length === 0 ? (
+        <div className="rounded-3xl border border-dashed border-white/10 p-16 text-center text-slate-500 bg-white/5 backdrop-blur-xl">
+          <BookOpen className="mx-auto h-16 w-16 text-slate-400/50 mb-4" />
+          <h3 className="text-lg font-medium text-slate-200">No reflections found</h3>
+          <p className="text-sm text-slate-400 mt-2">Start writing down your ideas and memories.</p>
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          {filteredEntries.map((entry) => {
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 auto-rows-max items-start">
+          {filteredEntries.map((entry, idx) => {
             const wordCount = entry.content.split(/\s+/).filter(Boolean).length
-            const readTime = Math.ceil(wordCount / 180)
-
             return (
-              <Card
+              <div
                 key={entry.id}
-                className={`relative flex flex-col justify-between rounded-3xl border border-white/10 bg-slate-900/60 p-6 shadow-xl backdrop-blur-md transition-all duration-300 hover:border-indigo-500/40 hover:shadow-2xl hover:shadow-indigo-500/10 ${
-                  entry.isPinned ? 'ring-1 ring-indigo-500/50 bg-indigo-950/20' : ''
+                onClick={() => setViewEntry(entry)}
+                style={{ animationDelay: `${idx * 50}ms` }}
+                className={`group animate-in fade-in slide-in-from-bottom-4 cursor-pointer flex flex-col rounded-3xl border bg-white/5 backdrop-blur-xl p-6 shadow-xl transition-all duration-300 hover:-translate-y-2 hover:shadow-2xl hover:border-white/20 relative overflow-hidden ${
+                  entry.isPinned ? 'border-amber-500/30 before:absolute before:left-0 before:top-0 before:bottom-0 before:w-1.5 before:bg-gradient-to-b before:from-amber-400 before:to-amber-600' : 'border-white/10'
                 }`}
               >
-                <div>
-                  <CardHeader className="flex flex-row items-start justify-between space-y-0 pb-3">
-                    <div className="space-y-1">
-                      <div className="flex items-center gap-2">
-                        {entry.isPinned && (
-                          <span className="flex items-center gap-1 rounded-md bg-indigo-500/20 px-2 py-0.5 text-[10px] font-semibold text-indigo-300">
-                            <Pin className="h-3 w-3 fill-current" /> Pinned
-                          </span>
-                        )}
-                        <CardTitle className="text-lg font-bold text-slate-100 hover:text-indigo-300 transition-colors">
-                          {entry.title}
-                        </CardTitle>
-                      </div>
-
-                      <div className="flex flex-wrap items-center gap-3 text-xs text-slate-400 pt-1">
-                        <span className="flex items-center gap-1">
-                          <CalendarIcon className="h-3.5 w-3.5 text-indigo-400" />
-                          {entry.date}
-                        </span>
-                        <span>•</span>
-                        <span className="rounded-full bg-slate-800 px-2 py-0.5 text-[11px] text-slate-300">
-                          {entry.mood}
-                        </span>
-                        {entry.weather && (
-                          <span className="text-[11px] text-slate-400">
-                            {entry.weather}
-                          </span>
-                        )}
-                      </div>
+                {/* Header */}
+                <div className="flex justify-between items-start mb-4">
+                  <span className="text-3xl" title="Mood">{entry.mood.split(' ')[0]}</span>
+                  <div className="flex gap-2">
+                    {entry.isPinned && <Pin className="h-4 w-4 text-amber-400 fill-amber-400/20" />}
+                    <div className="flex items-center gap-1 bg-black/40 rounded-full px-2 py-1 text-[10px] text-slate-300 font-mono">
+                      <Clock className="h-3 w-3" /> {wordCount}w
                     </div>
-
-                    <div className="flex items-center gap-1">
-                      <button
-                        onClick={(e) => handleTogglePin(entry.id, e)}
-                        className={`rounded-lg p-1.5 transition-colors cursor-pointer ${
-                          entry.isPinned
-                            ? 'text-indigo-400 hover:text-indigo-300'
-                            : 'text-slate-500 hover:text-slate-300 hover:bg-slate-800'
-                        }`}
-                        title={entry.isPinned ? 'Unpin' : 'Pin to top'}
-                      >
-                        <Pin className="h-4 w-4" />
-                      </button>
-                      <button
-                        onClick={() => handleDelete(entry.id)}
-                        className="rounded-lg p-1.5 text-slate-500 hover:text-rose-400 hover:bg-rose-500/10 transition-colors cursor-pointer"
-                        title="Delete note"
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </button>
-                    </div>
-                  </CardHeader>
-
-                  <CardContent className="mt-2">
-                    <p className="text-sm leading-relaxed text-slate-300 whitespace-pre-line line-clamp-5">
-                      {entry.content}
-                    </p>
-                  </CardContent>
+                  </div>
                 </div>
 
-                <CardFooter className="flex items-center justify-between pt-4 mt-4 border-t border-white/5 text-xs text-slate-400">
-                  <div className="flex flex-wrap gap-1.5">
-                    {entry.tags?.map((tag) => (
-                      <Badge key={tag} variant="primary" className="text-[10px]">
-                        #{tag}
-                      </Badge>
-                    ))}
-                  </div>
+                {/* Content */}
+                <h3 className="text-xl font-bold text-white mb-2 line-clamp-2 group-hover:text-indigo-300 transition-colors">{entry.title}</h3>
+                <p className="text-slate-400 text-sm line-clamp-4 leading-relaxed flex-1 mb-6">
+                  {entry.content}
+                </p>
 
-                  <div className="flex items-center gap-1 text-[11px] text-slate-500">
-                    <Clock className="h-3 w-3" />
-                    <span>{readTime} min read • {wordCount} words</span>
+                {/* Footer */}
+                <div className="mt-auto pt-4 border-t border-white/5 flex flex-col gap-3">
+                  <div className="flex items-center gap-2 text-xs text-slate-500">
+                    <CalendarIcon className="h-3.5 w-3.5 text-indigo-400" />
+                    {new Date(entry.date).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}
+                    <span className="px-2 py-0.5 rounded-full bg-white/5 text-[10px]">{entry.weather.split(' ')[0]}</span>
                   </div>
-                </CardFooter>
-              </Card>
+                  <div className="flex flex-wrap gap-1.5">
+                    {entry.tags?.slice(0,3).map(tag => (
+                      <span key={tag} className="px-2 py-1 rounded-lg bg-indigo-500/20 text-indigo-300 text-[10px] font-medium tracking-wide">
+                        #{tag}
+                      </span>
+                    ))}
+                    {entry.tags?.length > 3 && <span className="px-2 py-1 rounded-lg bg-white/5 text-slate-400 text-[10px]">+{entry.tags.length - 3}</span>}
+                  </div>
+                </div>
+              </div>
             )
           })}
         </div>
       )}
 
       {/* Write New Diary Modal */}
-      <Modal
-        isOpen={isModalOpen}
-        onClose={() => setIsModalOpen(false)}
-        title="Compose Daily Reflection"
-        maxWidth="max-w-2xl"
-      >
-        <form onSubmit={handleCreateEntry} className="space-y-4">
-          <Input
-            label="Title"
-            placeholder="Key breakthrough, idea or feeling..."
-            value={title}
-            onChange={(e) => setTitle(e.target.value)}
-            required
-          />
-
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+      <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title="New Diary Entry" maxWidth="max-w-3xl">
+        <form onSubmit={handleCreateEntry} className="space-y-5">
+          <Input label="Title" placeholder="What's on your mind?" value={title} onChange={(e) => setTitle(e.target.value)} required className="text-lg" />
+          
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div className="space-y-1.5 text-left">
-              <label className="block text-xs font-semibold uppercase tracking-wider text-slate-400">
-                Mood
-              </label>
-              <select
-                value={mood}
-                onChange={(e) => setMood(e.target.value)}
-                className="w-full rounded-xl border border-white/10 bg-slate-900 px-3 py-2 text-xs text-slate-100 focus:outline-none focus:border-indigo-500"
-              >
-                {MOODS.map((m) => (
-                  <option key={m.label} value={m.label}>
-                    {m.label}
-                  </option>
-                ))}
+              <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wide">Mood</label>
+              <select value={mood} onChange={(e) => setMood(e.target.value)} className="w-full rounded-xl border border-white/10 bg-black/40 px-3 py-2.5 text-sm text-white focus:border-indigo-500 focus:outline-none">
+                {MOODS.map(m => <option key={m} value={m}>{m}</option>)}
               </select>
             </div>
-
             <div className="space-y-1.5 text-left">
-              <label className="block text-xs font-semibold uppercase tracking-wider text-slate-400">
-                Weather
-              </label>
-              <select
-                value={weather}
-                onChange={(e) => setWeather(e.target.value)}
-                className="w-full rounded-xl border border-white/10 bg-slate-900 px-3 py-2 text-xs text-slate-100 focus:outline-none focus:border-indigo-500"
-              >
-                {WEATHERS.map((w) => (
-                  <option key={w} value={w}>
-                    {w}
-                  </option>
-                ))}
+              <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wide">Weather</label>
+              <select value={weather} onChange={(e) => setWeather(e.target.value)} className="w-full rounded-xl border border-white/10 bg-black/40 px-3 py-2.5 text-sm text-white focus:border-indigo-500 focus:outline-none">
+                {WEATHERS.map(w => <option key={w} value={w}>{w}</option>)}
               </select>
             </div>
-
-            <Input
-              label="Date"
-              type="date"
-              value={date}
-              onChange={(e) => setDate(e.target.value)}
-              required
-            />
+            <Input label="Date" type="date" value={date} onChange={(e) => setDate(e.target.value)} required />
           </div>
 
-          {/* Quick Markdown formatting bar */}
           <div className="space-y-1.5 text-left">
-            <div className="flex items-center justify-between">
-              <label className="block text-xs font-semibold uppercase tracking-wider text-slate-400">
-                Journal Content
-              </label>
-              <div className="flex items-center gap-1 text-slate-400">
-                <button
-                  type="button"
-                  onClick={() => insertMarkdown('**bold text** ')}
-                  className="rounded p-1 hover:bg-slate-800 hover:text-white"
-                  title="Bold"
-                >
-                  <Bold className="h-3.5 w-3.5" />
-                </button>
-                <button
-                  type="button"
-                  onClick={() => insertMarkdown('*italic text* ')}
-                  className="rounded p-1 hover:bg-slate-800 hover:text-white"
-                  title="Italic"
-                >
-                  <Italic className="h-3.5 w-3.5" />
-                </button>
-                <button
-                  type="button"
-                  onClick={() => insertMarkdown('\n- List item ')}
-                  className="rounded p-1 hover:bg-slate-800 hover:text-white"
-                  title="Bullet list"
-                >
-                  <List className="h-3.5 w-3.5" />
-                </button>
-                <button
-                  type="button"
-                  onClick={() => insertMarkdown('`code` ')}
-                  className="rounded p-1 hover:bg-slate-800 hover:text-white"
-                  title="Inline code"
-                >
-                  <Code className="h-3.5 w-3.5" />
-                </button>
-              </div>
+            <div className="flex justify-between items-end">
+              <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wide">Content</label>
+              <span className="text-[10px] text-slate-500">{content.length} chars • {content.split(/\s+/).filter(Boolean).length} words</span>
             </div>
-
             <textarea
-              rows={7}
+              rows={8}
               value={content}
               onChange={(e) => setContent(e.target.value)}
-              placeholder="What made today memorable? What problems did you conquer?"
-              className="w-full rounded-2xl border border-white/10 bg-slate-900/90 p-4 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 leading-relaxed font-sans"
+              placeholder="Start writing..."
+              className="w-full rounded-2xl border border-white/10 bg-black/40 p-4 text-base text-slate-100 placeholder-white/30 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500/50 leading-relaxed transition-all"
               required
             />
           </div>
 
-          <Input
-            label="Tags (comma-separated)"
-            placeholder="tech, philosophy, personal"
-            value={tagInput}
-            onChange={(e) => setTagInput(e.target.value)}
-          />
+          <div className="space-y-1.5 text-left">
+            <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wide">Tags (Press Enter)</label>
+            <div className="flex flex-wrap gap-2 mb-2">
+              {tags.map(t => (
+                <span key={t} className="flex items-center gap-1 bg-indigo-500/20 text-indigo-300 px-2 py-1 rounded-lg text-xs">
+                  #{t} <X className="h-3 w-3 cursor-pointer hover:text-white" onClick={() => removeTag(t)} />
+                </span>
+              ))}
+            </div>
+            <input
+              type="text"
+              value={tagInput}
+              onChange={(e) => setTagInput(e.target.value)}
+              onKeyDown={handleAddTag}
+              placeholder="e.g. tech, personal..."
+              className="w-full rounded-xl border border-white/10 bg-black/40 px-4 py-2.5 text-sm text-white focus:border-indigo-500 focus:outline-none"
+            />
+          </div>
 
-          <div className="flex justify-end gap-2 pt-2">
-            <Button
-              variant="ghost"
-              onClick={() => setIsModalOpen(false)}
-            >
-              Cancel
-            </Button>
-            <Button type="submit">
-              Save to Diary
-            </Button>
+          <div className="flex justify-end gap-3 pt-4 border-t border-white/10">
+            <Button variant="ghost" onClick={() => setIsModalOpen(false)}>Cancel</Button>
+            <Button type="submit" className="px-6">Save Entry</Button>
           </div>
         </form>
       </Modal>
+
+      {/* View Full Entry Modal */}
+      {viewEntry && (
+        <Modal isOpen={!!viewEntry} onClose={() => setViewEntry(null)} maxWidth="max-w-4xl">
+          <div className="p-4 sm:p-8 space-y-6 text-left">
+            <div className="flex justify-between items-start">
+              <div className="flex items-center gap-3">
+                <span className="text-4xl bg-white/5 p-3 rounded-2xl border border-white/10">{viewEntry.mood.split(' ')[0]}</span>
+                <div>
+                  <h2 className="text-3xl font-extrabold text-white tracking-tight">{viewEntry.title}</h2>
+                  <div className="flex items-center gap-2 mt-2 text-sm text-slate-400">
+                    <CalendarIcon className="h-4 w-4" /> {new Date(viewEntry.date).toLocaleDateString(undefined, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
+                    <span>•</span>
+                    <span>{viewEntry.weather}</span>
+                  </div>
+                </div>
+              </div>
+              <div className="flex gap-2">
+                <button onClick={() => handleTogglePin(viewEntry.id)} className={`p-2 rounded-xl border transition-colors ${viewEntry.isPinned ? 'bg-amber-500/20 border-amber-500/30 text-amber-400' : 'bg-white/5 border-white/10 text-slate-400 hover:text-white'}`}>
+                  <Pin className="h-5 w-5" />
+                </button>
+                <button onClick={() => handleDelete(viewEntry.id)} className="p-2 rounded-xl bg-white/5 border border-white/10 text-slate-400 hover:text-rose-400 hover:bg-rose-500/10 transition-colors">
+                  <Trash2 className="h-5 w-5" />
+                </button>
+              </div>
+            </div>
+            
+            <div className="prose prose-invert prose-lg max-w-none prose-p:leading-relaxed prose-a:text-indigo-400 bg-white/5 rounded-3xl p-6 md:p-10 border border-white/5 shadow-inner">
+              <p className="whitespace-pre-wrap text-slate-300 font-serif">{viewEntry.content}</p>
+            </div>
+
+            <div className="flex flex-wrap gap-2 pt-4">
+              {viewEntry.tags?.map(tag => (
+                <span key={tag} className="px-3 py-1.5 rounded-xl bg-indigo-500/20 text-indigo-300 text-xs font-semibold">#{tag}</span>
+              ))}
+            </div>
+          </div>
+        </Modal>
+      )}
     </div>
   )
 }

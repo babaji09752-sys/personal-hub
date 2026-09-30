@@ -5,9 +5,13 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "dev:pages": "wrangler pages dev -- npm run dev",
     "build": "vite build",
     "lint": "oxlint",
-    "preview": "vite preview"
+    "preview": "wrangler pages dev dist",
+    "deploy": "npm run build && wrangler pages deploy dist --project-name=personal-hub",
+    "db:migrate": "wrangler d1 execute personal-hub-db --file=./db/schema.sql",
+    "db:migrate:local": "wrangler d1 execute personal-hub-db --local --file=./db/schema.sql"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.117.2",
@@ -23,6 +27,7 @@
     "@types/react-dom": "^19.2.7",
     "@vitejs/plugin-react": "^6.1.1",
     "oxlint": "^1.81.0",
-    "vite": "^8.3.0"
+    "vite": "^8.3.0",
+    "wrangler": "^4.144.0"
   }
 }

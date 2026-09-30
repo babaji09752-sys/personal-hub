@@ -1,92 +1,25 @@
 import { useState, useEffect } from 'react'
-import { 
-  Plus, 
-  CheckCircle2, 
-  Circle, 
-  Trash2, 
-  CheckSquare, 
-  Calendar, 
-  Flag, 
-  ChevronDown, 
-  ChevronUp, 
-  Sparkles,
-  ListTodo,
-  Layers,
-  Clock
-} from 'lucide-react'
+import { Plus, CheckCircle2, Circle, Trash2, Calendar, ChevronDown, ChevronUp, Rocket } from 'lucide-react'
 import confetti from 'canvas-confetti'
 import { Button } from '../components/ui/Button'
-import { Card } from '../components/ui/Card'
 import { Badge } from '../components/ui/Badge'
+import { Modal } from '../components/ui/Modal'
 import { Input } from '../components/ui/Input'
 import { useToast } from '../context/ToastContext'
 import { sound } from '../services/sound'
-
-const INITIAL_TODOS = [
-  {
-    id: 1,
-    title: 'Deploy Cloudflare Worker auth proxy with CORS handling',
-    category: 'Dev',
-    priority: 'high',
-    dueDate: '2026-10-01',
-    completed: true,
-    subtasks: [
-      { id: 101, title: 'Verify TLS certificate', completed: true },
-      { id: 102, title: 'Benchmark edge response times', completed: true },
-    ],
-  },
-  {
-    id: 2,
-    title: 'Configure Supabase Row Level Security (RLS) policies',
-    category: 'Security',
-    priority: 'high',
-    dueDate: '2026-10-02',
-    completed: false,
-    subtasks: [
-      { id: 201, title: 'Create user isolate policies on profiles', completed: true },
-      { id: 202, title: 'Add test suite for token revocation', completed: false },
-    ],
-  },
-  {
-    id: 3,
-    title: 'Polish dark glassmorphism design system & command palette',
-    category: 'Design',
-    priority: 'medium',
-    dueDate: '2026-10-03',
-    completed: false,
-    subtasks: [
-      { id: 301, title: 'Test keyboard shortcuts (⌘K / Ctrl+K)', completed: true },
-      { id: 302, title: 'Add synthetic audio tactile clicks', completed: true },
-    ],
-  },
-  {
-    id: 4,
-    title: 'Prepare Q4 Product Architecture slide deck in Studio',
-    category: 'Strategy',
-    priority: 'low',
-    dueDate: '2026-10-05',
-    completed: false,
-    subtasks: [],
-  },
-]
+import { getTodos, createTodo, updateTodo, deleteTodo, mockData } from '../services/api'
 
 export function Todos() {
   const toast = useToast()
-  const [todos, setTodos] = useState(() => {
-    const saved = localStorage.getItem('app_todos')
-    if (saved) {
-      try {
-        return JSON.parse(saved)
-      } catch (e) {}
-    }
-    return INITIAL_TODOS
-  })
-
-  const [activeTab, setActiveTab] = useState('all') // 'all' | 'active' | 'completed'
+  const [todos, setTodos] = useState([])
+  const [loading, setLoading] = useState(true)
+  
+  const [activeTab, setActiveTab] = useState('all') 
   const [selectedCategory, setSelectedCategory] = useState('All')
   const [expandedId, setExpandedId] = useState(null)
+  const [isModalOpen, setIsModalOpen] = useState(false)
 
-  // New task form state
+  // Form states
   const [newTitle, setNewTitle] = useState('')
   const [newCategory, setNewCategory] = useState('Dev')
   const [newPriority, setNewPriority] = useState('medium')
@@ -94,17 +27,30 @@ export function Todos() {
   const [newSubtaskTitle, setNewSubtaskTitle] = useState('')
 
   useEffect(() => {
-    localStorage.setItem('app_todos', JSON.stringify(todos))
-  }, [todos])
+    const fetchTasks = async () => {
+      setLoading(true)
+      const data = await getTodos()
+      if (data) {
+        setTodos(data)
+      } else {
+        setTodos(mockData.todos)
+      }
+      setLoading(false)
+    }
+    fetchTasks()
+  }, [])
 
   const categories = ['All', ...new Set(todos.map((t) => t.category))]
 
-  const handleToggle = (id) => {
+  const handleToggle = async (id) => {
     sound.toggle()
+    const todo = todos.find(t => t.id === id)
+    if (!todo) return
+    const nextCompleted = !todo.completed
+    
     setTodos((prev) =>
       prev.map((t) => {
         if (t.id === id) {
-          const nextCompleted = !t.completed
           if (nextCompleted) {
             sound.success()
             confetti({
@@ -124,9 +70,11 @@ export function Todos() {
         return t
       })
     )
+
+    await updateTodo(id, { completed: nextCompleted })
   }
 
-  const handleToggleSubtask = (todoId, subtaskId, e) => {
+  const handleToggleSubtask = async (todoId, subtaskId, e) => {
     e?.stopPropagation()
     sound.toggle()
     setTodos((prev) =>
@@ -162,17 +110,17 @@ export function Todos() {
       })
     )
     setNewSubtaskTitle('')
-    toast.info('Subtask Added', 'Checklist item appended.')
   }
 
-  const handleDelete = (id, e) => {
+  const handleDelete = async (id, e) => {
     e?.stopPropagation()
     sound.delete()
     setTodos((prev) => prev.filter((t) => t.id !== id))
     toast.info('Task Deleted', 'Task removed from your tracker.')
+    await deleteTodo(id)
   }
 
-  const handleAdd = (e) => {
+  const handleAdd = async (e) => {
     e.preventDefault()
     if (!newTitle.trim()) return
 
@@ -189,7 +137,10 @@ export function Todos() {
 
     setTodos((prev) => [newTodo, ...prev])
     setNewTitle('')
+    setIsModalOpen(false)
     toast.success('Task Created', 'Added to your active sprint.')
+    
+    await createTodo(newTodo)
   }
 
   const completedCount = todos.filter((t) => t.completed).length
@@ -201,12 +152,29 @@ export function Todos() {
     const matchesCat = selectedCategory === 'All' || t.category === selectedCategory
     return matchesTab && matchesCat
   })
+  
+  const getRelativeTime = (dateStr) => {
+    if (!dateStr) return '';
+    const date = new Date(dateStr);
+    const today = new Date();
+    today.setHours(0,0,0,0);
+    date.setHours(0,0,0,0);
+    const diffTime = date - today;
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+    
+    if (diffDays === 0) return 'Today';
+    if (diffDays === 1) return 'Tomorrow';
+    if (diffDays === -1) return 'Yesterday';
+    if (diffDays > 1) return `In ${diffDays} days`;
+    if (diffDays < -1) return `${Math.abs(diffDays)} days ago`;
+    return dateStr;
+  }
 
   return (
     <div className="max-w-4xl mx-auto space-y-6">
       {/* Metric & Progress Dashboard Card */}
-      <div className="glass-panel relative overflow-hidden rounded-3xl p-6 shadow-2xl border border-white/10">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-6">
+      <div className="bg-white/5 backdrop-blur-xl rounded-3xl p-6 shadow-2xl border border-white/10 relative overflow-hidden">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-6 relative z-10">
           <div className="space-y-1">
             <span className="text-[11px] font-semibold uppercase tracking-wider text-indigo-400">
               Sprint Velocity & Progress
@@ -214,25 +182,12 @@ export function Todos() {
             <h3 className="text-2xl font-extrabold text-white tracking-tight">
               {completedCount} of {todos.length} Tasks Finished
             </h3>
-            <p className="text-xs text-slate-400">
-              {progressPercent === 100
-                ? 'All tasks completed! Stellar performance.'
-                : `${todos.length - completedCount} open deliverables remaining.`}
-            </p>
           </div>
 
-          {/* Radial progress representation */}
           <div className="flex items-center gap-4">
             <div className="relative flex h-16 w-16 items-center justify-center">
               <svg className="h-full w-full -rotate-90" viewBox="0 0 36 36">
-                <circle
-                  cx="18"
-                  cy="18"
-                  r="15"
-                  className="stroke-slate-800"
-                  strokeWidth="3.5"
-                  fill="none"
-                />
+                <circle cx="18" cy="18" r="15" className="stroke-white/10" strokeWidth="3.5" fill="none" />
                 <circle
                   cx="18"
                   cy="18"
@@ -249,78 +204,32 @@ export function Todos() {
                 {progressPercent}%
               </span>
             </div>
-
-            {/* Status Tabs */}
-            <div className="flex items-center gap-1 rounded-2xl bg-slate-900/80 p-1 border border-white/10">
-              {['all', 'active', 'completed'].map((tab) => (
-                <button
-                  key={tab}
-                  onClick={() => {
-                    sound.click()
-                    setActiveTab(tab)
-                  }}
-                  className={`rounded-xl px-3 py-1.5 text-xs font-semibold capitalize transition-all cursor-pointer ${
-                    activeTab === tab
-                      ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/30'
-                      : 'text-slate-400 hover:text-slate-200'
-                  }`}
-                >
-                  {tab}
-                </button>
-              ))}
-            </div>
           </div>
         </div>
-
-        {/* Progress Bar */}
-        <div className="mt-6 h-2 w-full overflow-hidden rounded-full bg-slate-900 border border-white/5">
-          <div
-            className="h-full bg-gradient-to-r from-indigo-500 via-purple-500 to-emerald-400 transition-all duration-500"
-            style={{ width: `${progressPercent}%` }}
-          />
+        
+        {/* Status Tabs */}
+        <div className="mt-6 flex items-center gap-2">
+          {['all', 'active', 'completed'].map((tab) => (
+            <button
+              key={tab}
+              onClick={() => {
+                sound.click()
+                setActiveTab(tab)
+              }}
+              className={`rounded-xl px-4 py-2 text-xs font-semibold capitalize transition-all cursor-pointer ${
+                activeTab === tab
+                  ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/30'
+                  : 'bg-white/5 text-slate-400 hover:text-slate-200 hover:bg-white/10'
+              }`}
+            >
+              {tab}
+            </button>
+          ))}
+          <div className="flex-1" />
+          <Button onClick={() => setIsModalOpen(true)} icon={Plus} size="sm" className="rounded-xl shadow-md">
+            New Task
+          </Button>
         </div>
-      </div>
-
-      {/* Add Task Input Card */}
-      <div className="glass-card rounded-2xl p-4">
-        <form onSubmit={handleAdd} className="flex flex-col sm:flex-row gap-3">
-          <input
-            type="text"
-            placeholder="Add new objective or task..."
-            value={newTitle}
-            onChange={(e) => setNewTitle(e.target.value)}
-            className="flex-1 rounded-xl border border-white/10 bg-slate-900/80 px-4 py-2.5 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-all"
-            required
-          />
-
-          <div className="flex flex-wrap items-center gap-2">
-            <select
-              value={newCategory}
-              onChange={(e) => setNewCategory(e.target.value)}
-              className="rounded-xl border border-white/10 bg-slate-900 px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-indigo-500"
-            >
-              <option value="Dev">Dev</option>
-              <option value="Security">Security</option>
-              <option value="Design">Design</option>
-              <option value="Strategy">Strategy</option>
-              <option value="Personal">Personal</option>
-            </select>
-
-            <select
-              value={newPriority}
-              onChange={(e) => setNewPriority(e.target.value)}
-              className="rounded-xl border border-white/10 bg-slate-900 px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-indigo-500"
-            >
-              <option value="high">Urgent</option>
-              <option value="medium">Medium</option>
-              <option value="low">Low</option>
-            </select>
-
-            <Button type="submit" icon={Plus} size="sm" className="rounded-xl shadow-md">
-              Create
-            </Button>
-          </div>
-        </form>
       </div>
 
       {/* Category Pills Filter */}
@@ -332,10 +241,10 @@ export function Todos() {
               sound.click()
               setSelectedCategory(cat)
             }}
-            className={`rounded-xl px-3 py-1.5 text-xs font-semibold whitespace-nowrap transition-all cursor-pointer ${
+            className={`rounded-xl px-4 py-2 text-xs font-semibold whitespace-nowrap transition-all cursor-pointer ${
               selectedCategory === cat
-                ? 'bg-slate-800 text-white border border-white/20'
-                : 'bg-slate-900/60 text-slate-500 hover:text-slate-300 border border-white/5'
+                ? 'bg-indigo-500/20 text-indigo-300 border border-indigo-500/30'
+                : 'bg-white/5 text-slate-400 hover:text-slate-300 border border-white/5'
             }`}
           >
             {cat}
@@ -344,15 +253,21 @@ export function Todos() {
       </div>
 
       {/* Todo Items List */}
-      {filteredTodos.length === 0 ? (
-        <div className="rounded-3xl border border-dashed border-white/10 p-16 text-center text-slate-500 glass-card">
-          <ListTodo className="mx-auto h-12 w-12 text-slate-600 mb-3" />
-          <h3 className="text-base font-medium text-slate-300">No active tasks in this view</h3>
-          <p className="text-xs text-slate-500 mt-1">Add a new item to keep moving forward.</p>
+      {loading ? (
+        <div className="space-y-4">
+          {[1,2,3].map(i => (
+            <div key={i} className="h-20 bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl animate-pulse" />
+          ))}
+        </div>
+      ) : filteredTodos.length === 0 ? (
+        <div className="rounded-3xl border border-dashed border-white/10 p-16 text-center text-slate-500 bg-white/5 backdrop-blur-xl">
+          <Rocket className="mx-auto h-12 w-12 text-slate-400 mb-3" />
+          <h3 className="text-base font-medium text-slate-200">You're all caught up!</h3>
+          <p className="text-xs text-slate-500 mt-1">Ready for a new adventure?</p>
         </div>
       ) : (
-        <div className="space-y-3">
-          {filteredTodos.map((todo) => {
+        <div className="space-y-4">
+          {filteredTodos.map((todo, idx) => {
             const isExpanded = expandedId === todo.id
             const subtaskCount = todo.subtasks?.length || 0
             const doneSubtasks = todo.subtasks?.filter((st) => st.completed).length || 0
@@ -360,32 +275,33 @@ export function Todos() {
             return (
               <div
                 key={todo.id}
-                className={`overflow-hidden rounded-2xl border transition-all duration-200 ${
+                style={{ animationDelay: `${idx * 50}ms` }}
+                className={`animate-in fade-in slide-in-from-bottom-4 overflow-hidden rounded-2xl border transition-all duration-300 transform hover:scale-[1.01] hover:shadow-2xl ${
                   todo.completed
-                    ? 'border-white/5 bg-slate-950/40 opacity-70'
-                    : 'border-white/10 bg-slate-900/70 hover:border-indigo-500/40 hover:shadow-lg'
+                    ? 'border-white/5 bg-white/5 opacity-60'
+                    : 'border-white/10 bg-white/5 backdrop-blur-xl hover:bg-white/10 hover:border-white/20'
                 }`}
               >
                 {/* Main Todo Row */}
                 <div
                   onClick={() => handleToggle(todo.id)}
-                  className="flex items-center justify-between p-4 cursor-pointer"
+                  className="flex items-center justify-between p-5 cursor-pointer group"
                 >
-                  <div className="flex items-center gap-3.5 min-w-0">
+                  <div className="flex items-center gap-4 min-w-0">
                     <button
                       type="button"
-                      className="text-slate-400 hover:text-indigo-400 transition-colors shrink-0 cursor-pointer"
+                      className="text-slate-400 hover:text-indigo-400 transition-colors shrink-0 group-hover:scale-110"
                     >
                       {todo.completed ? (
-                        <CheckCircle2 className="h-5 w-5 text-emerald-400" />
+                        <CheckCircle2 className="h-6 w-6 text-emerald-400" />
                       ) : (
-                        <Circle className="h-5 w-5 text-slate-500" />
+                        <Circle className="h-6 w-6 text-slate-500 group-hover:text-indigo-400" />
                       )}
                     </button>
 
                     <div className="truncate">
                       <span
-                        className={`text-sm transition-all ${
+                        className={`text-base transition-all ${
                           todo.completed
                             ? 'text-slate-500 line-through'
                             : 'text-slate-100 font-semibold'
@@ -394,13 +310,13 @@ export function Todos() {
                         {todo.title}
                       </span>
 
-                      <div className="flex items-center gap-2 text-[10px] text-slate-500 mt-0.5">
+                      <div className="flex items-center gap-3 text-xs text-slate-400 mt-1">
                         <span className="flex items-center gap-1">
-                          <Calendar className="h-3 w-3" />
-                          {todo.dueDate}
+                          <Calendar className="h-3.5 w-3.5" />
+                          {getRelativeTime(todo.dueDate)}
                         </span>
                         {subtaskCount > 0 && (
-                          <span>
+                          <span className="font-medium text-indigo-400/80">
                             • {doneSubtasks}/{subtaskCount} Subtasks
                           </span>
                         )}
@@ -409,21 +325,18 @@ export function Todos() {
                   </div>
 
                   {/* Badges & Actions */}
-                  <div className="flex items-center gap-2 shrink-0">
+                  <div className="flex items-center gap-3 shrink-0">
                     <Badge
-                      variant={
-                        todo.priority === 'high'
-                          ? 'danger'
-                          : todo.priority === 'medium'
-                          ? 'warning'
-                          : 'default'
-                      }
-                      className="text-[10px] capitalize"
+                      className={`text-[10px] capitalize font-bold px-2 py-1 ${
+                        todo.priority === 'high' ? 'bg-rose-500/20 text-rose-400 border-rose-500/30' :
+                        todo.priority === 'medium' ? 'bg-amber-500/20 text-amber-400 border-amber-500/30' :
+                        'bg-emerald-500/20 text-emerald-400 border-emerald-500/30'
+                      }`}
                     >
                       {todo.priority}
                     </Badge>
 
-                    <Badge variant="primary" className="text-[10px]">
+                    <Badge className="text-[10px] bg-white/10 text-white/70 border-white/10">
                       {todo.category}
                     </Badge>
 
@@ -434,21 +347,15 @@ export function Todos() {
                         sound.click()
                         setExpandedId(isExpanded ? null : todo.id)
                       }}
-                      className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-800 hover:text-white transition-colors cursor-pointer"
-                      title="Expand subtasks"
+                      className="rounded-lg p-2 text-slate-400 hover:bg-white/10 hover:text-white transition-colors cursor-pointer"
                     >
-                      {isExpanded ? (
-                        <ChevronUp className="h-4 w-4" />
-                      ) : (
-                        <ChevronDown className="h-4 w-4" />
-                      )}
+                      {isExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
                     </button>
 
                     <button
                       type="button"
                       onClick={(e) => handleDelete(todo.id, e)}
-                      className="rounded-lg p-1.5 text-slate-500 hover:bg-rose-500/10 hover:text-rose-400 transition-colors cursor-pointer"
-                      title="Delete task"
+                      className="rounded-lg p-2 text-slate-500 hover:bg-rose-500/20 hover:text-rose-400 transition-colors cursor-pointer"
                     >
                       <Trash2 className="h-4 w-4" />
                     </button>
@@ -456,24 +363,23 @@ export function Todos() {
                 </div>
 
                 {/* Subtasks Accordion Drawer */}
-                {isExpanded && (
-                  <div className="border-t border-white/5 bg-slate-950/70 p-4 space-y-3">
-                    <div className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">
-                      Checklist & Sub-Deliverables
-                    </div>
-
+                <div
+                  className={`transition-all duration-300 ease-in-out overflow-hidden border-t border-white/5 bg-black/20`}
+                  style={{ maxHeight: isExpanded ? '500px' : '0px', opacity: isExpanded ? 1 : 0 }}
+                >
+                  <div className="p-5 space-y-3">
                     <div className="space-y-2">
                       {todo.subtasks?.map((st) => (
                         <div
                           key={st.id}
                           onClick={(e) => handleToggleSubtask(todo.id, st.id, e)}
-                          className="flex items-center gap-2.5 text-xs text-slate-300 hover:text-white cursor-pointer pl-2 py-1"
+                          className="flex items-center gap-3 text-sm text-slate-300 hover:text-white cursor-pointer py-1.5 px-2 rounded-lg hover:bg-white/5 transition-colors group"
                         >
                           <input
                             type="checkbox"
                             checked={st.completed}
                             onChange={() => {}}
-                            className="rounded border-slate-700 bg-slate-800 text-indigo-600 focus:ring-0 cursor-pointer"
+                            className="rounded-full border-slate-600 bg-white/5 text-indigo-500 focus:ring-0 cursor-pointer group-hover:scale-110 transition-transform"
                           />
                           <span className={st.completed ? 'line-through text-slate-500' : ''}>
                             {st.title}
@@ -482,8 +388,7 @@ export function Todos() {
                       ))}
                     </div>
 
-                    {/* Add Subtask Input */}
-                    <div className="flex items-center gap-2 pt-2">
+                    <div className="flex items-center gap-2 pt-3 px-2">
                       <input
                         type="text"
                         placeholder="Add subtask item..."
@@ -495,23 +400,70 @@ export function Todos() {
                             handleAddSubtask(todo.id)
                           }
                         }}
-                        className="flex-1 rounded-lg border border-white/10 bg-slate-900 px-3 py-1.5 text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:border-indigo-500"
+                        className="flex-1 rounded-xl border border-white/10 bg-white/5 px-4 py-2 text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:border-indigo-500/50 transition-colors"
                       />
-                      <Button
-                        size="sm"
-                        variant="secondary"
-                        onClick={() => handleAddSubtask(todo.id)}
-                      >
+                      <Button size="sm" variant="secondary" onClick={() => handleAddSubtask(todo.id)}>
                         Add
                       </Button>
                     </div>
                   </div>
-                )}
+                </div>
               </div>
             )
           })}
         </div>
       )}
+
+      {/* Add Task Modal */}
+      <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title="Create New Task">
+        <form onSubmit={handleAdd} className="space-y-4">
+          <Input
+            label="Title"
+            value={newTitle}
+            onChange={(e) => setNewTitle(e.target.value)}
+            placeholder="e.g. Design new landing page"
+            required
+          />
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-1">
+              <label className="text-xs font-semibold text-slate-400">Category</label>
+              <select
+                value={newCategory}
+                onChange={(e) => setNewCategory(e.target.value)}
+                className="w-full rounded-xl border border-white/10 bg-black/40 px-3 py-2 text-sm text-white focus:border-indigo-500 focus:outline-none"
+              >
+                <option value="Dev">Dev</option>
+                <option value="Security">Security</option>
+                <option value="Design">Design</option>
+                <option value="Strategy">Strategy</option>
+                <option value="Personal">Personal</option>
+              </select>
+            </div>
+            <div className="space-y-1">
+              <label className="text-xs font-semibold text-slate-400">Priority</label>
+              <select
+                value={newPriority}
+                onChange={(e) => setNewPriority(e.target.value)}
+                className="w-full rounded-xl border border-white/10 bg-black/40 px-3 py-2 text-sm text-white focus:border-indigo-500 focus:outline-none"
+              >
+                <option value="high">Urgent</option>
+                <option value="medium">Medium</option>
+                <option value="low">Low</option>
+              </select>
+            </div>
+          </div>
+          <Input
+            label="Due Date"
+            type="date"
+            value={newDueDate}
+            onChange={(e) => setNewDueDate(e.target.value)}
+          />
+          <div className="flex justify-end gap-2 pt-4">
+            <Button variant="ghost" onClick={() => setIsModalOpen(false)}>Cancel</Button>
+            <Button type="submit">Create Task</Button>
+          </div>
+        </form>
+      </Modal>
     </div>
   )
 }

@@ -1,177 +1,108 @@
-/**
- * Cloudflare Worker API Client and Service Wrappers
- */
-
-const WORKER_API_URL = import.meta.env.VITE_WORKER_API_URL || 'https://worker-api.local'
-
-/**
- * Base fetch wrapper with error handling and authorization header
- */
-async function request(endpoint, options = {}) {
-  const token = localStorage.getItem('auth_token')
-  const headers = {
-    'Content-Type': 'application/json',
-    ...(token ? { Authorization: `Bearer ${token}` } : {}),
-    ...options.headers,
-  }
-
-  const url = `${WORKER_API_URL}${endpoint.startsWith('/') ? endpoint : `/${endpoint}`}`
-
+export async function fetchAPI(endpoint, options = {}) {
   try {
-    const res = await fetch(url, {
+    const res = await fetch(endpoint, {
+      headers: { 'Content-Type': 'application/json' },
       ...options,
-      headers,
-    })
-
-    if (!res.ok) {
-      const errData = await res.json().catch(() => ({}))
-      throw new Error(errData.message || `Request failed with status ${res.status}`)
-    }
-
-    return await res.json()
-  } catch (error) {
-    // If worker is not deployed or network error, fallback to simulated data
-    console.warn(`[Worker API] Fallback for ${endpoint}:`, error.message)
-    return handleSimulatedResponse(endpoint, options)
+    });
+    if (!res.ok) throw new Error(res.statusText);
+    return await res.json();
+  } catch {
+    return null; // caller handles fallback
   }
 }
 
-/**
- * Fallback mock response generator for offline or pre-deployment preview
- */
-function handleSimulatedResponse(endpoint, options = {}) {
-  const method = (options.method || 'GET').toUpperCase()
+// ---- Todos ----
+export const getTodos = () => fetchAPI('/api/todos');
+export const createTodo = (data) => fetchAPI('/api/todos', { method: 'POST', body: JSON.stringify(data) });
+export const updateTodo = (id, data) => fetchAPI(`/api/todos/${id}`, { method: 'PUT', body: JSON.stringify(data) });
+export const deleteTodo = (id) => fetchAPI(`/api/todos/${id}`, { method: 'DELETE' });
 
-  if (endpoint.includes('/chat')) {
-    if (method === 'POST') {
-      const body = JSON.parse(options.body || '{}')
-      return {
-        id: `msg-${Date.now()}`,
-        role: 'assistant',
-        content: `I received your message: "${body.message}". (Served via Cloudflare Worker simulation).`,
-        timestamp: new Date().toISOString(),
-      }
-    }
-  }
+export const getSubtasks = (todoId) => fetchAPI(`/api/subtasks?todoId=${todoId}`);
+export const createSubtask = (data) => fetchAPI('/api/subtasks', { method: 'POST', body: JSON.stringify(data) });
+export const toggleSubtask = (id, completed) => fetchAPI(`/api/subtasks/${id}`, { method: 'PUT', body: JSON.stringify({ completed }) });
+export const deleteSubtask = (id) => fetchAPI(`/api/subtasks/${id}`, { method: 'DELETE' });
 
-  if (endpoint.includes('/todos')) {
-    return [
-      { id: 1, title: 'Configure Supabase project', completed: true, priority: 'high', category: 'Dev' },
-      { id: 2, title: 'Deploy Cloudflare Worker endpoint', completed: false, priority: 'high', category: 'Dev' },
-      { id: 3, title: 'Sync diary entries with vector search', completed: false, priority: 'medium', category: 'Feature' },
-      { id: 4, title: 'Prepare quarterly presentation slides', completed: false, priority: 'low', category: 'Docs' },
-    ]
-  }
+// ---- Diary ----
+export const getDiaryEntries = () => fetchAPI('/api/diary');
+export const createDiaryEntry = (data) => fetchAPI('/api/diary', { method: 'POST', body: JSON.stringify(data) });
+export const updateDiaryEntry = (id, data) => fetchAPI(`/api/diary/${id}`, { method: 'PUT', body: JSON.stringify(data) });
+export const deleteDiaryEntry = (id) => fetchAPI(`/api/diary/${id}`, { method: 'DELETE' });
 
-  if (endpoint.includes('/diary')) {
-    return [
-      {
-        id: 1,
-        title: 'Project Kickoff & Architecture',
-        date: '2026-09-29',
-        mood: '🚀 Productive',
-        content: 'Scaffolded the modern clean React + Vite + Tailwind frontend architecture.',
-        tags: ['architecture', 'react', 'tailwind'],
-      },
-      {
-        id: 2,
-        title: 'Exploring Cloudflare Workers & Supabase',
-        date: '2026-09-28',
-        mood: '💡 Inspired',
-        content: 'Integrated edge worker functions for fast low-latency proxying and token auth.',
-        tags: ['edge', 'supabase'],
-      },
-    ]
-  }
+// ---- Gallery ----
+export const getPhotos = () => fetchAPI('/api/gallery');
+export const addPhoto = (data) => fetchAPI('/api/gallery', { method: 'POST', body: JSON.stringify(data) });
+export const toggleFavorite = (id, isFavorite) => fetchAPI(`/api/gallery/${id}`, { method: 'PUT', body: JSON.stringify({ isFavorite }) });
+export const deletePhoto = (id) => fetchAPI(`/api/gallery/${id}`, { method: 'DELETE' });
 
-  if (endpoint.includes('/gallery')) {
-    return [
-      {
-        id: 1,
-        title: 'Cyberpunk Skyline',
-        url: 'https://images.unsplash.com/photo-1519501025264-65ba15a82390?auto=format&fit=crop&w=800&q=80',
-        category: 'Urban',
-        date: '2026-09-20',
-      },
-      {
-        id: 2,
-        title: 'Northern Lights Reflections',
-        url: 'https://images.unsplash.com/photo-1531366936337-7c912a4589a7?auto=format&fit=crop&w=800&q=80',
-        category: 'Nature',
-        date: '2026-09-22',
-      },
-      {
-        id: 3,
-        title: 'Minimalist Workspace',
-        url: 'https://images.unsplash.com/photo-1498050108023-c5249f4df085?auto=format&fit=crop&w=800&q=80',
-        category: 'Work',
-        date: '2026-09-25',
-      },
-    ]
-  }
+// ---- Chat ----
+export const getChatMessages = () => fetchAPI('/api/chat');
+export const sendChatMessage = (data) => fetchAPI('/api/chat', { method: 'POST', body: JSON.stringify(data) });
+export const clearChat = () => fetchAPI('/api/chat', { method: 'DELETE' });
 
-  if (endpoint.includes('/pdf')) {
-    return {
-      status: 'ready',
-      documents: [
-        { id: 'doc-1', name: 'Cloud_Architecture_Whitepaper.pdf', size: '2.4 MB', pages: 14, updatedAt: '2026-09-28' },
-        { id: 'doc-2', name: 'API_Specifications_v2.pdf', size: '1.1 MB', pages: 8, updatedAt: '2026-09-29' },
+// ---- Health ----
+export const getHealth = () => fetchAPI('/api/health');
+
+export const mockData = {
+  todos: [
+    {
+      id: 1,
+      title: 'Deploy Cloudflare Worker auth proxy with CORS handling',
+      category: 'Dev',
+      priority: 'high',
+      dueDate: '2026-10-01',
+      completed: true,
+      subtasks: [
+        { id: 101, title: 'Verify TLS certificate', completed: true },
+        { id: 102, title: 'Benchmark edge response times', completed: true },
+      ],
+    },
+    {
+      id: 2,
+      title: 'Configure Supabase Row Level Security (RLS) policies',
+      category: 'Security',
+      priority: 'high',
+      dueDate: '2026-10-02',
+      completed: false,
+      subtasks: [
+        { id: 201, title: 'Create user isolate policies on profiles', completed: true },
+        { id: 202, title: 'Add test suite for token revocation', completed: false },
       ],
     }
-  }
-
-  if (endpoint.includes('/ppt')) {
-    return {
-      presentations: [
-        { id: 'ppt-1', title: 'Product Launch Q4', slidesCount: 12, theme: 'Modern Dark', lastModified: '2026-09-29' },
-        { id: 'ppt-2', title: 'Edge Computing Overview', slidesCount: 8, theme: 'Sapphire Glow', lastModified: '2026-09-27' },
-      ],
+  ],
+  diary: [
+    {
+      id: 1,
+      title: 'Architecting the Cloudflare Edge Personal Hub',
+      date: '2026-09-30',
+      mood: '🚀 Productive',
+      weather: '🌙 Starry Night',
+      content: 'Today I finalized the decoupled fullstack setup.\n\nThe edge worker handles all routing logic with ultra-low latency, and Supabase manages user identities with zero friction.\n\nDesigning with glassmorphism and tactile audio feedback feels so satisfying. Key takeaway: Never sacrifice responsiveness for aesthetic flair—balance both seamlessly.',
+      tags: ['engineering', 'design', 'milestone'],
+      isPinned: true,
     }
-  }
-
-  return { success: true }
-}
-
-export const api = {
-  // Chat endpoints
-  chat: {
-    send: (message, conversationId = 'default') =>
-      request('/chat/message', {
-        method: 'POST',
-        body: JSON.stringify({ message, conversationId }),
-      }),
-  },
-
-  // Todos endpoints
-  todos: {
-    list: () => request('/todos'),
-    create: (todo) => request('/todos', { method: 'POST', body: JSON.stringify(todo) }),
-    toggle: (id) => request(`/todos/${id}/toggle`, { method: 'PATCH' }),
-    delete: (id) => request(`/todos/${id}`, { method: 'DELETE' }),
-  },
-
-  // Diary endpoints
-  diary: {
-    list: () => request('/diary'),
-    create: (entry) => request('/diary', { method: 'POST', body: JSON.stringify(entry) }),
-    delete: (id) => request(`/diary/${id}`, { method: 'DELETE' }),
-  },
-
-  // Gallery endpoints
-  gallery: {
-    list: () => request('/gallery'),
-    upload: (formData) => request('/gallery/upload', { method: 'POST', body: formData }),
-  },
-
-  // PDF tools endpoints
-  pdf: {
-    list: () => request('/pdf/documents'),
-    analyze: (docId) => request(`/pdf/${docId}/analyze`, { method: 'POST' }),
-  },
-
-  // Presentation endpoints
-  ppt: {
-    list: () => request('/ppt/decks'),
-    generate: (prompt) => request('/ppt/generate', { method: 'POST', body: JSON.stringify({ prompt }) }),
-  },
-}
+  ],
+  gallery: [
+    {
+      id: 1,
+      title: 'Neon Tokyo Alleyway',
+      url: 'https://images.unsplash.com/photo-1503899036084-c55cdd92da26?auto=format&fit=crop&w=1200&q=80',
+      category: 'Cyberpunk',
+      date: '2026-09-28',
+      likes: 42,
+      camera: 'Sony A7R V • 35mm f/1.4',
+      shutter: '1/250s • ISO 400',
+      colors: ['#0f172a', '#6366f1', '#ec4899', '#38bdf8'],
+      isFavorite: true,
+    }
+  ],
+  chat: [
+    {
+      id: 'msg-welcome',
+      role: 'assistant',
+      content: `Welcome! I'm your edge-powered AI copilot. I can help architect systems, draft presentations, analyze documents, and query your personal knowledge vault.`,
+      codeSnippet: `// Example Cloudflare Worker routing\nexport default {\n  async fetch(req, env) {\n    const url = new URL(req.url);\n    return new Response(JSON.stringify({ status: "ok", edge: "global" }), {\n      headers: { "content-type": "application/json" }\n    });\n  }\n};`,
+      timestamp: 'Just now',
+      model: 'Gemini 1.5 Flash',
+    }
+  ]
+};

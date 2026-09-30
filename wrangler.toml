@@ -1,0 +1,11 @@
+#:schema node_modules/wrangler/config-schema.json
+
+name = "personal-hub"
+compatibility_date = "2026-09-30"
+pages_build_output_dir = "./dist"
+
+# ─── D1 Database Binding ───────────────────────────────
+[[d1_databases]]
+binding = "DB"
+database_name = "personal-hub-db"
+database_id = "" # ← Filled after `wrangler d1 create`
