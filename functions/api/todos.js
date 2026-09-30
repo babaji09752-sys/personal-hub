@@ -1,4 +1,4 @@
-export async function onRequestGET(context) {
+export async function onRequestGet(context) {
   try {
     const { env } = context;
     const stmt = env.DB.prepare(`
@@ -31,7 +31,7 @@ export async function onRequestGET(context) {
   }
 }
 
-export async function onRequestPOST(context) {
+export async function onRequestPost(context) {
   try {
     const { request, env } = context;
     const body = await request.json();
@@ -56,7 +56,7 @@ export async function onRequestPOST(context) {
   }
 }
 
-export async function onRequestPUT(context) {
+export async function onRequestPut(context) {
   try {
     const { request, env } = context;
     const url = new URL(request.url);
@@ -85,7 +85,7 @@ export async function onRequestPUT(context) {
   }
 }
 
-export async function onRequestDELETE(context) {
+export async function onRequestDelete(context) {
   try {
     const { request, env } = context;
     const url = new URL(request.url);

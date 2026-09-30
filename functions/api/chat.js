@@ -1,4 +1,4 @@
-export async function onRequestGET(context) {
+export async function onRequestGet(context) {
   try {
     const { env } = context;
     const stmt = env.DB.prepare(`SELECT * FROM chat_messages ORDER BY timestamp ASC LIMIT 50`);
@@ -9,7 +9,7 @@ export async function onRequestGET(context) {
   }
 }
 
-export async function onRequestPOST(context) {
+export async function onRequestPost(context) {
   try {
     const { request, env } = context;
     const body = await request.json();
@@ -24,7 +24,7 @@ export async function onRequestPOST(context) {
   }
 }
 
-export async function onRequestDELETE(context) {
+export async function onRequestDelete(context) {
   try {
     const { env } = context;
     const stmt = env.DB.prepare(`DELETE FROM chat_messages RETURNING id`);
