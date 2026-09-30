@@ -1,5 +1,6 @@
 import { createContext, useContext, useState, useEffect } from 'react'
 import { supabase, isSupabaseConfigured, signInWithOtp, verifyOtp, signOut, getSession, signInWithGoogle } from '../services/supabase'
+import { verifyGoogleCredential } from '../services/api'
 
 const AuthContext = createContext(null)
 
@@ -12,9 +13,10 @@ export function AuthProvider({ children }) {
     // Check saved session or local storage
     async function initAuth() {
       try {
-        const savedGuest = localStorage.getItem('app_guest_user')
-        if (savedGuest) {
-          setUser(JSON.parse(savedGuest))
+        const savedUser = localStorage.getItem('app_user') || localStorage.getItem('app_guest_user')
+        if (savedUser) {
+          const parsed = JSON.parse(savedUser)
+          setUser(parsed)
           setLoading(false)
           return
         }
@@ -87,11 +89,27 @@ export function AuthProvider({ children }) {
       setSession(res.data.session)
       setUser(res.data.user)
       localStorage.setItem('auth_token', res.data.session.access_token)
-      if (!isSupabaseConfigured) {
-        localStorage.setItem('app_guest_user', JSON.stringify(res.data.user))
-      }
+      localStorage.setItem('app_user', JSON.stringify(res.data.user))
     }
     return res
+  }
+
+  // Official Google Identity Services Credential Verification
+  const handleGoogleCredential = async (credential) => {
+    try {
+      const res = await verifyGoogleCredential(credential)
+      if (res && res.verified && res.user) {
+        setUser(res.user)
+        setSession(res.session)
+        localStorage.setItem('auth_token', res.session?.access_token || credential)
+        localStorage.setItem('app_user', JSON.stringify(res.user))
+        return { success: true, user: res.user }
+      }
+      return { success: false, error: res?.error || 'Verification failed with Google tokeninfo.' }
+    } catch (err) {
+      console.error('Google verification error:', err)
+      return { success: false, error: err.message || 'Verification error' }
+    }
   }
 
   // Logout
@@ -101,6 +119,14 @@ export function AuthProvider({ children }) {
     setSession(null)
     localStorage.removeItem('auth_token')
     localStorage.removeItem('app_guest_user')
+    localStorage.removeItem('app_user')
+    if (typeof window !== 'undefined' && window.google?.accounts?.id) {
+      try {
+        window.google.accounts.id.disableAutoSelect?.()
+      } catch (e) {
+        // ignore
+      }
+    }
   }
 
   const value = {
@@ -112,6 +138,7 @@ export function AuthProvider({ children }) {
     verifyCode,
     loginAsGuest,
     loginWithGoogle,
+    handleGoogleCredential,
     logout,
   }
 

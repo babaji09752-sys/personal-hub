@@ -42,6 +42,14 @@ export const clearChat = () => fetchAPI('/api/chat', { method: 'DELETE' });
 // ---- Health ----
 export const getHealth = () => fetchAPI('/api/health');
 
+// ---- Google Official Auth Verification ----
+export const verifyGoogleCredential = async (credential) => {
+  return await fetchAPI('/api/auth/google', {
+    method: 'POST',
+    body: JSON.stringify({ credential }),
+  });
+};
+
 export const mockData = {
   todos: [
     {
